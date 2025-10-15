@@ -1,7 +1,277 @@
 // prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider  = "postgresql"
-  url  	    = env("DATABASE_URL")
+  url       = env("DATABASE_URL")
   // uncomment next line if you use Prisma <5.10
   // directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(NURSE)
+  profile       Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // Application relations
+  organizedJobs     Job[]               @relation("OrganizerJobs")
+  applications      Application[]
+  sentMessages      Message[]
+  reviews           Review[]            @relation("ReviewAuthor")
+  receivedReviews   Review[]            @relation("ReviewTarget")
+  attendanceRecords AttendanceRecord[]
+  auditLogs         AuditLog[]
+
+  @@map("users")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Job {
+  id           String        @id @default(cuid())
+  organizerId  String
+  title        String
+  description  String        @db.Text
+  categories   String[]
+  location     Json
+  startAt      DateTime
+  endAt        DateTime
+  headcount    Int
+  compensation Json
+  deadline     DateTime
+  status       JobStatus     @default(DRAFT)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  organizer   User                 @relation("OrganizerJobs", fields: [organizerId], references: [id])
+  applications Application[]
+  threads     Thread[]
+  orders      JobOrder[]
+  escrow      EscrowTransaction?
+  attendance  AttendanceRecord[]
+  reviews     Review[]
+
+  @@map("jobs")
+}
+
+model Application {
+  id        String            @id @default(cuid())
+  jobId     String
+  nurseId   String
+  message   String            @db.Text
+  quote     Json?
+  status    ApplicationStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  // Relations
+  job   Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  nurse User @relation(fields: [nurseId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, nurseId])
+  @@map("applications")
+}
+
+model Thread {
+  id            String    @id @default(cuid())
+  jobId         String
+  participants  String[]
+  lastMessageAt DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  // Relations
+  job      Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("threads")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  threadId    String
+  senderId    String
+  content     String   @db.Text
+  attachments Json[]   @default([])
+  readBy      String[] @default([])
+  createdAt   DateTime @default(now())
+
+  // Relations
+  thread Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User   @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model JobOrder {
+  id                String      @id @default(cuid())
+  jobId             String
+  templateType      String?
+  customDocumentUrl String?
+  terms             Json
+  status            OrderStatus @default(PENDING)
+  createdAt         DateTime    @default(now())
+  acceptedAt        DateTime?
+
+  // Relations
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("job_orders")
+}
+
+model EscrowTransaction {
+  id          String       @id @default(cuid())
+  jobId       String       @unique
+  amount      Int
+  platformFee Int
+  status      EscrowStatus @default(AWAITING)
+  createdAt   DateTime     @default(now())
+  releasedAt  DateTime?
+
+  // Relations
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@map("escrow_transactions")
+}
+
+model AttendanceRecord {
+  id             String    @id @default(cuid())
+  jobId          String
+  nurseId        String
+  checkInAt      DateTime?
+  checkOutAt     DateTime?
+  notes          String?   @db.Text
+  irregularities String?   @db.Text
+  createdAt      DateTime  @default(now())
+
+  // Relations
+  job   Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  nurse User @relation(fields: [nurseId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, nurseId])
+  @@map("attendance_records")
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  jobId     String
+  authorId  String
+  targetId  String
+  rating    Int
+  tags      String[]
+  comment   String   @db.Text
+  createdAt DateTime @default(now())
+
+  // Relations
+  job    Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  author User @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  target User @relation("ReviewTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, authorId, targetId])
+  @@map("reviews")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  action    String
+  target    String
+  metadata  Json
+  createdAt DateTime @default(now())
+
+  // Relations
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@map("audit_logs")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  ORGANIZER
+  NURSE
+}
+
+enum JobStatus {
+  DRAFT
+  OPEN
+  APPLIED
+  CONTRACTED
+  ESCROW_HOLDING
+  IN_PROGRESS
+  REVIEW_PENDING
+  READY_TO_PAY
+  PAID
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum EscrowStatus {
+  AWAITING
+  HOLDING
+  RELEASED
+  REFUNDED
 }
