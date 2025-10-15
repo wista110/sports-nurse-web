@@ -23,6 +23,16 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            password: true,
+            role: true,
+            image: true,
+            profile: true,
+            createdAt: true,
+          },
         });
 
         if (!user || !user.password) {
@@ -44,6 +54,8 @@ export const authOptions: NextAuthOptions = {
           name: user.name,
           role: user.role,
           image: user.image,
+          profile: user.profile as any,
+          createdAt: user.createdAt,
         };
       },
     }),
@@ -71,6 +83,8 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (user) {
         token.role = user.role;
+        token.profile = user.profile;
+        token.createdAt = user.createdAt?.toISOString();
       }
       return token;
     },
@@ -78,6 +92,8 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.sub!;
         session.user.role = token.role as UserRole;
+        session.user.profile = token.profile as any;
+        session.user.createdAt = token.createdAt;
       }
       return session;
     },

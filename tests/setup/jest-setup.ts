@@ -1,51 +1,28 @@
+import { PrismaClient } from '@prisma/client'
 import { TestDatabase } from './database'
 
-// Setup for individual test files
-export async function setupTestDatabase() {
-  const testDb = TestDatabase.getInstance()
-  await testDb.cleanup() // Clean before each test suite
+let testDb: TestDatabase
+
+export async function setupTestDatabase(): Promise<PrismaClient> {
+  testDb = TestDatabase.getInstance()
+  await testDb.setup()
   return testDb.getPrismaClient()
 }
 
-export async function cleanupTestDatabase() {
-  const testDb = TestDatabase.getInstance()
-  await testDb.cleanup() // Clean after each test suite
+export async function cleanupTestDatabase(): Promise<void> {
+  if (testDb) {
+    await testDb.teardown()
+  }
 }
 
-// Mock implementations for testing
-export const mockNextRequest = (body: any = {}, searchParams: Record<string, string> = {}) => {
-  const url = new URL('http://localhost:3000/api/test')
-  Object.entries(searchParams).forEach(([key, value]) => {
-    url.searchParams.set(key, value)
-  })
-
-  return {
-    json: jest.fn().mockResolvedValue(body),
-    url: url.toString(),
-    nextUrl: url,
-    method: 'POST',
-    headers: new Headers(),
-  } as any
+// Global setup for Jest
+export default async function globalSetup() {
+  // This will be called once before all tests
+  console.log('Setting up test environment...')
 }
 
-export const mockNextResponse = () => ({
-  json: jest.fn().mockImplementation((data) => ({
-    json: () => Promise.resolve(data),
-    status: 200,
-  })),
-  status: jest.fn().mockReturnThis(),
-})
-
-// Test utilities
-export const waitFor = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-export const expectValidationError = (result: any, field: string, message?: string) => {
-  expect(result.error).toBeTruthy()
-  if (message) {
-    expect(result.error.message).toContain(message)
-  }
-  // Check if it's a Zod validation error with field-specific errors
-  if (result.error.details && result.error.details.fieldErrors) {
-    expect(result.error.details.fieldErrors[field]).toBeDefined()
-  }
+// Global teardown for Jest
+export async function globalTeardown() {
+  // This will be called once after all tests
+  console.log('Tearing down test environment...')
 }

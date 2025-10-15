@@ -27,34 +27,45 @@
   - _Requirements: 1.1, 2.4, 4.4, 5.4, 10.1_
 
 - [x] 1.4 Basic Testing Infrastructure
-
   - Set up Jest configuration for unit testing
   - Configure Playwright for end-to-end testing
   - Create test database setup and teardown utilities
   - Write sample tests for core validation functions
   - _Requirements: Testing infrastructure for all requirements_
 
-- [ ] 2. User Management and Profile System
+- [x] 2. User Management and Profile System
   - Create user registration pages with role selection
   - Implement user profile management with role-specific fields
   - Build profile editing forms with validation
   - Add user profile display components
   - _Requirements: 11.1, 11.2, 11.5_
 
-- [ ] 2.1 Nurse Profile Specialization
+- [x] 2.1 Nurse Profile Specialization
   - Create nurse-specific profile fields (license number, skills, location)
   - Implement skills selection interface with predefined options
   - Add location selection with prefecture and city dropdowns
   - Build nurse profile validation specific to healthcare requirements
   - _Requirements: 11.2_
 
-- [ ] 2.2 Organizer Profile Management
+- [x] 2.2 Organizer Profile Management
+
+
+
+
+
+
   - Create organizer profile with organization details
   - Implement organizer verification status tracking
   - Add organizer profile display for public job listings
   - _Requirements: 11.2_
 
-- [ ]\* 2.3 User Profile Testing
+- [x] 2.3 User Profile Testing
+
+
+
+
+
+
   - Write unit tests for profile validation logic
   - Create E2E tests for registration and profile management flows
   - Test role-based profile field visibility

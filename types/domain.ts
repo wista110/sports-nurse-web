@@ -6,9 +6,21 @@ export interface UserProfile {
   phone?: string;
   city: string;
   prefecture: string;
-  licenseNumber?: string; // nurses only
-  skills?: string[]; // nurses only
-  organizationName?: string; // organizers only
+  // Nurse-specific fields
+  licenseNumber?: string;
+  skills?: string[];
+  yearsOfExperience?: number;
+  specializations?: string[];
+  bio?: string;
+  // Organizer-specific fields
+  organizationName?: string;
+  organizationType?: string;
+  representativeName?: string;
+  businessRegistrationNumber?: string;
+  website?: string;
+  description?: string;
+  verificationStatus?: string;
+  // Common fields
   ratingAverage?: number;
   ratingCount: number;
 }
