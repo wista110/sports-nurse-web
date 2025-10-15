@@ -1,0 +1,30 @@
+# Global owners
+* @dfuji
+
+# Spec and documentation
+/.kiro/ @dfuji
+/docs/ @dfuji
+README.md @dfuji
+
+# Database and schema
+/prisma/ @dfuji
+
+# Configuration files
+/.github/ @dfuji
+/package.json @dfuji
+/tsconfig.json @dfuji
+/next.config.js @dfuji
+
+# Security and environment
+/.env.example @dfuji
+/middleware.ts @dfuji
+
+# Core application logic
+/src/app/ @dfuji
+/src/lib/ @dfuji
+/src/components/ @dfuji
+
+# Testing
+/tests/ @dfuji
+/playwright.config.ts @dfuji
+/jest.config.js @dfuji
