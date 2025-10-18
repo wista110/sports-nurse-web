@@ -155,3 +155,5 @@ export class AuditService {
     });
   }
 }
+
+export const auditService = AuditService;

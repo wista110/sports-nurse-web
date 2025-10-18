@@ -16,7 +16,7 @@ export const jobCompensationSchema = z.object({
   currency: z.literal("JPY"),
 });
 
-export const createJobSchema = z.object({
+const baseJobSchema = z.object({
   title: z.string().min(1, "Title is required").max(200, "Title is too long"),
   description: z
     .string()
@@ -32,7 +32,9 @@ export const createJobSchema = z.object({
   headcount: z.number().int().min(1, "At least 1 nurse is required"),
   compensation: jobCompensationSchema,
   deadline: z.date(),
-}).refine((data) => data.endAt > data.startAt, {
+});
+
+export const createJobSchema = baseJobSchema.refine((data) => data.endAt > data.startAt, {
   message: "End time must be after start time",
   path: ["endAt"],
 }).refine((data) => data.deadline <= data.startAt, {
@@ -40,8 +42,24 @@ export const createJobSchema = z.object({
   path: ["deadline"],
 });
 
-export const updateJobSchema = createJobSchema.partial().extend({
+export const updateJobSchema = baseJobSchema.partial().extend({
   status: z.nativeEnum(JobStatus).optional(),
+}).refine((data) => {
+  if (data.startAt && data.endAt) {
+    return data.endAt > data.startAt;
+  }
+  return true;
+}, {
+  message: "End time must be after start time",
+  path: ["endAt"],
+}).refine((data) => {
+  if (data.startAt && data.deadline) {
+    return data.deadline <= data.startAt;
+  }
+  return true;
+}, {
+  message: "Application deadline must be before or equal to start time",
+  path: ["deadline"],
 });
 
 export const jobFiltersSchema = z.object({

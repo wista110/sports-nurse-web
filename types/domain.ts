@@ -216,6 +216,35 @@ export interface JobFilters {
   compensationType?: "hourly" | "fixed";
   status?: JobStatus[];
   search?: string;
+  page?: number;
+  limit?: number;
+  sort?: string;
+}
+
+// Job Input Types
+export interface CreateJobInput {
+  title: string;
+  description: string;
+  categories: string[];
+  location: JobLocation;
+  startAt: Date;
+  endAt: Date;
+  headcount: number;
+  compensation: JobCompensation;
+  deadline: Date;
+}
+
+export interface UpdateJobInput {
+  title?: string;
+  description?: string;
+  categories?: string[];
+  location?: JobLocation;
+  startAt?: Date;
+  endAt?: Date;
+  headcount?: number;
+  compensation?: JobCompensation;
+  deadline?: Date;
+  status?: JobStatus;
 }
 
 export interface AuditFilters {
