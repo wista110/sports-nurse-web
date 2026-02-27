@@ -64,6 +64,7 @@ model User {
   receivedReviews   Review[]            @relation("ReviewTarget")
   attendanceRecords AttendanceRecord[]
   auditLogs         AuditLog[]
+  payouts           Payout[]            @relation("NursePayouts")
 
   @@map("users")
 }
@@ -101,6 +102,7 @@ model Job {
   escrow      EscrowTransaction?
   attendance  AttendanceRecord[]
   reviews     Review[]
+  payouts     Payout[]
 
   @@map("jobs")
 }
@@ -269,9 +271,35 @@ enum OrderStatus {
   CANCELLED
 }
 
-enum EscrowStatus {
-  AWAITING
-  HOLDING
-  RELEASED
-  REFUNDED
+model Payout {
+  id          String      @id @default(uuid())
+  jobId       String
+  nurseId     String
+  amount      Int
+  fee         Int
+  netAmount   Int
+  method      PayoutMethod
+  status      PayoutStatus @default(PENDING)
+  executedAt  DateTime?
+  scheduledFor DateTime?
+  failureReason String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  job   Job  @relation(fields: [jobId], references: [id])
+  nurse User @relation("NursePayouts", fields: [nurseId], references: [id])
+  
+  @@map("payouts")
+}
+
+enum PayoutMethod {
+  INSTANT
+  SCHEDULED
+}
+
+enum PayoutStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
