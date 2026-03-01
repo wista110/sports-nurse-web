@@ -482,6 +482,320 @@ export class PaymentService {
       }
     };
   }
+
+  /**
+   * 最終支払い処理を実行する（管理者用）
+   */
+  static async executeFinalPayment(input: ExecutePaymentInput, actorId: string): Promise<PaymentHistory> {
+    const { jobId, paymentMethod, notes } = input;
+
+    // 案件とエスクロー情報を取得
+    const job = await prisma.job.findUnique({
+      where: { id: jobId },
+      include: {
+        escrow: true,
+        applications: {
+          where: { status: 'ACCEPTED' },
+          include: {
+            nurse: {
+              include: { profile: true }
+            }
+          }
+        },
+        reviews: true
+      }
+    });
+
+    if (!job) {
+      throw new AppError(
+        ErrorType.NOT_FOUND,
+        'JOB_NOT_FOUND',
+        '指定された案件が見つかりません',
+        404
+      );
+    }
+
+    if (!job.escrow) {
+      throw new AppError(
+        ErrorType.BUSINESS_LOGIC,
+        'NO_ESCROW_FOUND',
+        'この案件にはエスクロー取引が存在しません',
+        400
+      );
+    }
+
+    if (job.escrow.status !== 'HOLDING') {
+      throw new AppError(
+        ErrorType.BUSINESS_LOGIC,
+        'INVALID_ESCROW_STATUS',
+        '最終支払いはエスクロー預り中の案件でのみ実行できます',
+        400
+      );
+    }
+
+    // レビューが完了していることを確認
+    const expectedReviews = job.applications.length * 2; // 依頼者→看護師、看護師→依頼者
+    if (job.reviews.length < expectedReviews) {
+      throw new AppError(
+        ErrorType.BUSINESS_LOGIC,
+        'REVIEWS_INCOMPLETE',
+        'すべてのレビューが完了していません',
+        400
+      );
+    }
+
+    const acceptedApplication = job.applications[0];
+    if (!acceptedApplication) {
+      throw new AppError(
+        ErrorType.BUSINESS_LOGIC,
+        'NO_ACCEPTED_APPLICATION',
+        '承認された応募が見つかりません',
+        400
+      );
+    }
+
+    // 手数料計算
+    const feeCalculation = await this.calculateFees({
+      amount: job.escrow.amount,
+      paymentMethod
+    });
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        // 支払い記録作成
+        const payout = await tx.payout.create({
+          data: {
+            jobId,
+            nurseId: acceptedApplication.nurseId,
+            amount: job.escrow.amount,
+            fee: feeCalculation.totalFee,
+            netAmount: feeCalculation.netAmount,
+            method: paymentMethod,
+            status: 'COMPLETED',
+            executedAt: new Date(),
+            notes
+          }
+        });
+
+        // エスクロー解放
+        await tx.escrowTransaction.update({
+          where: { id: job.escrow.id },
+          data: { 
+            status: 'RELEASED',
+            releasedAt: new Date()
+          }
+        });
+
+        // 案件ステータス更新
+        await tx.job.update({
+          where: { id: jobId },
+          data: { status: 'PAID' }
+        });
+
+        return payout;
+      });
+
+      // 監査ログ記録
+      await auditService.logAction({
+        actorId,
+        action: 'FINAL_PAYMENT_EXECUTED',
+        target: `payout:${result.id}`,
+        metadata: {
+          jobId,
+          nurseId: acceptedApplication.nurseId,
+          amount: job.escrow.amount,
+          netAmount: feeCalculation.netAmount,
+          paymentMethod,
+          feeCalculation
+        }
+      });
+
+      return {
+        id: result.id,
+        jobId: result.jobId,
+        nurseId: result.nurseId,
+        amount: result.amount,
+        fee: result.fee,
+        netAmount: result.netAmount,
+        method: result.method as 'instant' | 'scheduled',
+        status: result.status as 'PENDING' | 'COMPLETED' | 'FAILED',
+        executedAt: result.executedAt,
+        notes: result.notes,
+        createdAt: result.createdAt,
+        job: {
+          id: job.id,
+          title: job.title
+        },
+        nurse: {
+          id: acceptedApplication.nurse.id,
+          name: acceptedApplication.nurse.profile?.name || '名前未設定'
+        }
+      };
+    } catch (error) {
+      throw new AppError(
+        ErrorType.SYSTEM,
+        'FINAL_PAYMENT_FAILED',
+        '最終支払い処理に失敗しました',
+        500,
+        { originalError: error }
+      );
+    }
+  }
+
+  /**
+   * 支払い可能な案件一覧を取得する（管理者用）
+   */
+  static async getPayableJobs(): Promise<Array<{
+    id: string;
+    title: string;
+    amount: number;
+    nurseId: string;
+    nurseName: string;
+    organizerId: string;
+    organizerName: string;
+    completedAt: Date;
+    reviewsCompleted: boolean;
+  }>> {
+    const jobs = await prisma.job.findMany({
+      where: {
+        status: 'REVIEW_PENDING',
+        escrow: {
+          status: 'HOLDING'
+        }
+      },
+      include: {
+        escrow: true,
+        organizer: {
+          include: { profile: true }
+        },
+        applications: {
+          where: { status: 'ACCEPTED' },
+          include: {
+            nurse: {
+              include: { profile: true }
+            }
+          }
+        },
+        reviews: true,
+        attendanceRecords: {
+          where: {
+            checkOutAt: { not: null }
+          }
+        }
+      }
+    });
+
+    return jobs
+      .filter(job => {
+        // 承認された応募があることを確認
+        const acceptedApplication = job.applications.find(app => app.status === 'ACCEPTED');
+        if (!acceptedApplication) return false;
+
+        // 出勤記録があることを確認
+        const hasAttendance = job.attendanceRecords.length > 0;
+        if (!hasAttendance) return false;
+
+        // レビューが完了していることを確認
+        const expectedReviews = job.applications.length * 2;
+        const reviewsCompleted = job.reviews.length >= expectedReviews;
+
+        return reviewsCompleted;
+      })
+      .map(job => {
+        const acceptedApplication = job.applications[0];
+        const latestAttendance = job.attendanceRecords
+          .sort((a, b) => new Date(b.checkOutAt!).getTime() - new Date(a.checkOutAt!).getTime())[0];
+
+        return {
+          id: job.id,
+          title: job.title,
+          amount: job.escrow!.amount,
+          nurseId: acceptedApplication.nurseId,
+          nurseName: acceptedApplication.nurse.profile?.name || '名前未設定',
+          organizerId: job.organizerId,
+          organizerName: job.organizer.profile?.name || '名前未設定',
+          completedAt: latestAttendance.checkOutAt!,
+          reviewsCompleted: true
+        };
+      });
+  }
+
+  /**
+   * 支払い履歴を取得する
+   */
+  static async getPaymentHistory(filters: {
+    nurseId?: string;
+    organizerId?: string;
+    status?: string;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+    offset?: number;
+  }): Promise<PaymentHistory[]> {
+    const { nurseId, organizerId, status, startDate, endDate, limit = 50, offset = 0 } = filters;
+
+    const whereClause: any = {};
+
+    if (nurseId) whereClause.nurseId = nurseId;
+    if (status) whereClause.status = status;
+
+    if (startDate || endDate) {
+      whereClause.executedAt = {};
+      if (startDate) whereClause.executedAt.gte = startDate;
+      if (endDate) whereClause.executedAt.lte = endDate;
+    }
+
+    if (organizerId) {
+      whereClause.job = {
+        organizerId
+      };
+    }
+
+    const payouts = await prisma.payout.findMany({
+      where: whereClause,
+      include: {
+        job: {
+          select: {
+            id: true,
+            title: true
+          }
+        },
+        nurse: {
+          select: {
+            id: true,
+            profile: {
+              select: { name: true }
+            }
+          }
+        }
+      },
+      orderBy: { executedAt: 'desc' },
+      take: limit,
+      skip: offset
+    });
+
+    return payouts.map(payout => ({
+      id: payout.id,
+      jobId: payout.jobId,
+      nurseId: payout.nurseId,
+      amount: payout.amount,
+      fee: payout.fee,
+      netAmount: payout.netAmount,
+      method: payout.method as 'instant' | 'scheduled',
+      status: payout.status as 'PENDING' | 'COMPLETED' | 'FAILED',
+      executedAt: payout.executedAt,
+      notes: payout.notes,
+      createdAt: payout.createdAt,
+      job: {
+        id: payout.job.id,
+        title: payout.job.title
+      },
+      nurse: {
+        id: payout.nurse.id,
+        name: payout.nurse.profile?.name || '名前未設定'
+      }
+    }));
+  }
 }
 
 export const paymentService = PaymentService;
