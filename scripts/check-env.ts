@@ -68,6 +68,32 @@ const ENV_CHECKS: EnvCheck[] = [
     key: 'BLOB_READ_WRITE_TOKEN',
     required: false,
     description: 'Vercel Blob ストレージトークン'
+  },
+  {
+    key: 'CRON_SECRET',
+    required: false,
+    description: 'Cronジョブ認証用の秘密鍵',
+    example: 'your-cron-secret-key'
+  },
+  {
+    key: 'VERCEL_TOKEN',
+    required: false,
+    description: 'Vercelデプロイ用トークン（CI/CD用）'
+  },
+  {
+    key: 'VERCEL_ORG_ID',
+    required: false,
+    description: 'Vercel組織ID（CI/CD用）'
+  },
+  {
+    key: 'VERCEL_PROJECT_ID',
+    required: false,
+    description: 'VercelプロジェクトID（CI/CD用）'
+  },
+  {
+    key: 'SENTRY_DSN',
+    required: false,
+    description: 'Sentryエラートラッキング用DSN'
   }
 ];
 

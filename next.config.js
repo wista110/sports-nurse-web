@@ -1,3 +1,5 @@
+const { withSentryConfig } = require('@sentry/nextjs');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
@@ -45,6 +47,24 @@ const nextConfig = {
       },
     ];
   },
+  // Sentry設定
+  sentry: {
+    hideSourceMaps: true,
+    widenClientFileUpload: true,
+  },
 };
 
-module.exports = nextConfig;
+// Sentryの設定
+const sentryWebpackPluginOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: true,
+  widenClientFileUpload: true,
+  hideSourceMaps: true,
+  disableLogger: true,
+  automaticVercelMonitors: true,
+};
+
+module.exports = process.env.SENTRY_DSN 
+  ? withSentryConfig(nextConfig, sentryWebpackPluginOptions)
+  : nextConfig;
