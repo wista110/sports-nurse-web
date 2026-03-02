@@ -303,3 +303,11 @@ enum PayoutStatus {
   COMPLETED
   FAILED
 }
+
+enum EscrowStatus {
+  AWAITING
+  HELD
+  RELEASED
+  REFUNDED
+  CANCELLED
+}

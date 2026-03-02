@@ -19,6 +19,7 @@ async function clearDatabase() {
   console.log('🗑️  データベースをクリアしています...');
   
   // 外部キー制約の順序を考慮して削除
+  await prisma.payout.deleteMany();
   await prisma.review.deleteMany();
   await prisma.message.deleteMany();
   await prisma.thread.deleteMany();
@@ -28,7 +29,6 @@ async function clearDatabase() {
   await prisma.attendanceRecord.deleteMany();
   await prisma.job.deleteMany();
   await prisma.auditLog.deleteMany();
-  await prisma.profile.deleteMany();
   await prisma.user.deleteMany();
   
   console.log('✅ データベースのクリアが完了しました');
@@ -50,29 +50,13 @@ async function seedUsers() {
         email: userData.email,
         password: hashedPassword,
         role: userData.role,
-        profile: {
-          create: {
-            name: userData.profile.name,
-            phone: userData.profile.phone,
-            prefecture: userData.profile.prefecture,
-            city: userData.profile.city,
-            licenseNumber: userData.profile.licenseNumber || null,
-            skills: userData.profile.skills || [],
-            experience: userData.profile.experience || null,
-            organizationName: userData.profile.organizationName || null,
-            organizationType: userData.profile.organizationType || null,
-            isVerified: userData.profile.isVerified || false,
-            bio: userData.profile.bio || null,
-          }
-        },
-        include: {
-          profile: true
-        }
+        name: userData.profile.name,
+        profile: userData.profile,
       }
     });
     
     users.push(user);
-    console.log(`  ✅ ${user.profile?.name} (${user.role})`);
+    console.log(`  ✅ ${userData.profile.name} (${user.role})`);
   }
   
   return users;
@@ -93,9 +77,26 @@ async function seedJobs(users: any[]) {
     
     const job = await prisma.job.create({
       data: {
-        ...jobData,
         organizerId: organizer.id,
-        requirements: jobData.requirements,
+        title: jobData.title,
+        description: jobData.description,
+        categories: [jobData.category],
+        location: {
+          prefecture: jobData.prefecture,
+          city: jobData.city,
+          venue: jobData.venue
+        },
+        startAt: jobData.startDate,
+        endAt: jobData.endDate,
+        headcount: jobData.requiredNurses,
+        compensation: {
+          amount: jobData.compensation,
+          transportationFee: jobData.transportationFee,
+          mealProvided: jobData.mealProvided,
+          accommodationProvided: jobData.accommodationProvided
+        },
+        deadline: jobData.applicationDeadline,
+        status: 'OPEN',
       }
     });
     
@@ -120,12 +121,18 @@ async function seedApplications(users: any[], jobs: any[]) {
     const jobsToApply = jobs.slice(0, Math.floor(Math.random() * 3) + 1);
     
     for (const job of jobsToApply) {
+      const nurseProfile = nurse.profile as any;
+      const jobCompensation = job.compensation as any;
+      
       const application = await prisma.application.create({
         data: {
           nurseId: nurse.id,
           jobId: job.id,
-          message: `${job.title}に応募いたします。${nurse.profile?.experience || 0}年の経験があり、特に${nurse.profile?.skills?.[0] || '救急処置'}を得意としています。`,
-          customQuote: job.compensation + Math.floor(Math.random() * 5000),
+          message: `${job.title}に応募いたします。${nurseProfile?.experience || 0}年の経験があり、特に${nurseProfile?.skills?.[0] || '救急処置'}を得意としています。`,
+          quote: {
+            amount: jobCompensation.amount + Math.floor(Math.random() * 5000),
+            breakdown: '基本料金 + 交通費'
+          },
           status: ['PENDING', 'ACCEPTED', 'REJECTED'][Math.floor(Math.random() * 3)] as any,
         }
       });
@@ -141,7 +148,7 @@ async function seedApplications(users: any[], jobs: any[]) {
 /**
  * メッセージスレッドとメッセージを作成
  */
-async function seedMessages(applications: any[]) {
+async function seedMessages(applications: any[], jobs: any[]) {
   console.log('💬 メッセージデータを作成しています...');
   
   const threads = [];
@@ -150,9 +157,13 @@ async function seedMessages(applications: any[]) {
   const acceptedApplications = applications.filter(app => app.status === 'ACCEPTED');
   
   for (const application of acceptedApplications.slice(0, 5)) {
+    const job = jobs.find(j => j.id === application.jobId);
+    if (!job) continue;
+    
     const thread = await prisma.thread.create({
       data: {
-        applicationId: application.id,
+        jobId: job.id,
+        participants: [application.nurseId, job.organizerId],
         lastMessageAt: new Date(),
       }
     });
@@ -160,12 +171,15 @@ async function seedMessages(applications: any[]) {
     // サンプルメッセージを作成
     for (let i = 0; i < SAMPLE_MESSAGES.length; i++) {
       const messageData = SAMPLE_MESSAGES[i];
+      const senderId = messageData.isFromNurse ? application.nurseId : job.organizerId;
+      const readBy = Math.random() > 0.3 ? [senderId] : [];
+      
       await prisma.message.create({
         data: {
           threadId: thread.id,
-          senderId: messageData.isFromNurse ? application.nurseId : application.job?.organizerId,
+          senderId,
           content: messageData.content,
-          isRead: Math.random() > 0.3, // 70%の確率で既読
+          readBy,
         }
       });
     }
@@ -368,7 +382,7 @@ async function main() {
     const applications = await seedApplications(users, jobs);
     
     // メッセージを作成
-    await seedMessages(applications);
+    await seedMessages(applications, jobs);
     
     // 求人オーダーを作成
     const jobOrders = await seedJobOrders(applications);
